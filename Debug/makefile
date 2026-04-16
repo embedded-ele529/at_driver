@@ -61,6 +61,9 @@ default.size.stdout \
 OBJDUMP_LIST += \
 driver_development.list \
 
+OBJCOPY_HEX += \
+driver_development.hex \
+
 
 # All Target
 all: main-build
@@ -84,12 +87,17 @@ driver_development.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DE
 	@echo 'Finished building: $@'
 	@echo ' '
 
+driver_development.hex: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objcopy  -O ihex $(EXECUTABLES) "driver_development.hex"
+	@echo 'Finished building: $@'
+	@echo ' '
+
 # Other Targets
 clean:
-	-$(RM) default.size.stdout driver_development.elf driver_development.list driver_development.map
+	-$(RM) default.size.stdout driver_development.elf driver_development.hex driver_development.list driver_development.map
 	-@echo ' '
 
-secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST)
+secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST) $(OBJCOPY_HEX)
 
 fail-specified-linker-script-missing:
 	@echo 'Error: Cannot find the specified linker script. Check the linker settings in the build configuration.'
