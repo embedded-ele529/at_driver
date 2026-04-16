@@ -9,7 +9,6 @@ extern "C" {
 
 #define AT_COMMAND_DRIVER_SW_VERSION	(1.0)
 
-// Hata Kodları
 typedef enum {
     E_AT_ERR_NONE = 0,
     E_AT_ERR_TIMEOUT,
@@ -19,23 +18,28 @@ typedef enum {
     E_AT_ERR_UNKNOWN
 } atCommandErrorCodes_t;
 
-// IOCTL Komutları (Sadece temel ihtiyaçlar)
 typedef enum {
     E_AT_IOCTL_NONE = 0,
-    E_AT_IOCTL_GET_VERSION,
-    E_AT_IOCTL_SEND_CMD           // AT Komutu gönderme ve okuma işlemi
+    E_AT_IOCTL_SEND_CMD
 } AT_COMMAND_IOCTL_COMMANDS_T;
 
-// IOCTL "E_AT_IOCTL_SEND_CMD" için vpParam üzerinden iletilecek Struct
+#define AT_MAX_LINES    8
+
 typedef struct {
-    const char* command;         // Gönderilecek komut (Örn: "AT+CPIN?")
-    const char* expected_resp;   // Beklenen cevap (Örn: "OK")
-    uint32_t    timeout_ms;      // Maksimum bekleme süresi
-    char* out_buffer;      // Dönen cevabı almak istiyorsak (Örn: "+CSQ: 18,99")
-    uint16_t    out_buffer_len;  // out_buffer'ın maksimum boyutu
+    // INPUTS
+    const char* command;         // AT Command string (e.g., "AT+CSQ?")
+    const char* expected_resp;   // Expected response substring to look for (e.g., "OK")
+    uint32_t    timeout_ms;      // Timeout for waiting for the response in milliseconds
+
+    // OUTPUTS
+    char* resp_buffer;           // Location to store the raw response from the modem
+    uint16_t resp_buffer_len;    // Size of the response buffer provided by the user
+
+    char* lines[AT_MAX_LINES];   // Parsed lines from the response (e.g., if response is "OK\r\n+CSQ: 15,99\r\n", lines[0] = "+CSQ: 15,99")
+    uint8_t line_count;          // Number of valid lines parsed into the 'lines' array
 } AtCommandReq_t;
 
-// --- API FONKSİYONLARI --- (Sadece 3 temel fonksiyon)
+// API Function Prototypes
 atCommandErrorCodes_t AtCommand_Open(void* vpParam);
 
 atCommandErrorCodes_t AtCommand_Ioctl(AT_COMMAND_IOCTL_COMMANDS_T eCommand, void* vpParam);

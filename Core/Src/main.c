@@ -18,14 +18,13 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include <stdio.h>
 #include "cmsis_os.h"
 #include "usb_host.h"
 
-#include "../../Drivers/drv_at_command/inc/at_command.h"
-
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "at_command.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -50,6 +49,8 @@ I2S_HandleTypeDef hi2s3;
 
 SPI_HandleTypeDef hspi1;
 
+UART_HandleTypeDef huart3;
+
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
@@ -58,7 +59,29 @@ const osThreadAttr_t defaultTask_attributes = {
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* USER CODE BEGIN PV */
+char latest_signal_strength[64] = "Unknown";
+char latest_network_time[64] = "Unknown";
 
+osMutexId_t at_driver_mutexHandle;
+const osMutexAttr_t at_driver_mutex_attributes = {
+  .name = "at_driver_mutex"
+};
+
+// Handle definitions for other tasks
+osThreadId_t signalTaskHandle;
+osThreadId_t timeTaskHandle;
+
+const osThreadAttr_t signalTask_attributes = {
+  .name = "SignalTask",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
+const osThreadAttr_t timeTask_attributes = {
+  .name = "TimeTask",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityAboveNormal,
+};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -67,7 +90,10 @@ static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_I2S3_Init(void);
 static void MX_SPI1_Init(void);
+static void MX_USART3_UART_Init(void);
 void StartDefaultTask(void *argument);
+void StartSignalTask(void *argument);
+void StartTimeTask(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -110,7 +136,10 @@ int main(void)
   MX_I2C1_Init();
   MX_I2S3_Init();
   MX_SPI1_Init();
+  MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
+
+  AtCommand_Open(NULL);
 
   /* USER CODE END 2 */
 
@@ -118,7 +147,9 @@ int main(void)
   osKernelInitialize();
 
   /* USER CODE BEGIN RTOS_MUTEX */
-  /* add mutexes, ... */
+
+  at_driver_mutexHandle = osMutexNew(&at_driver_mutex_attributes);
+
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
@@ -138,7 +169,10 @@ int main(void)
   defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
-  /* add threads, ... */
+
+  // Create threads for signal quality and time retrieval
+  signalTaskHandle = osThreadNew(StartSignalTask, NULL, &signalTask_attributes);
+  timeTaskHandle = osThreadNew(StartTimeTask, NULL, &timeTask_attributes);
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -313,6 +347,39 @@ static void MX_SPI1_Init(void)
 }
 
 /**
+  * @brief USART3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART3_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART3_Init 0 */
+
+  /* USER CODE END USART3_Init 0 */
+
+  /* USER CODE BEGIN USART3_Init 1 */
+
+  /* USER CODE END USART3_Init 1 */
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 115200;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART3_Init 2 */
+
+  /* USER CODE END USART3_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -411,7 +478,65 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+// Task 1: Measure Signal Quality (CSQ)
+void StartSignalTask(void *argument)
+{
+    char resp_buf[64];
+    AtCommandReq_t req = {
+        .command = "AT+CSQ",
+        .expected_resp = "OK",
+        .timeout_ms = 1000,
+        .resp_buffer = resp_buf,
+        .resp_buffer_len = sizeof(resp_buf)
+    };
 
+    for(;;)
+    {
+        // Take the mutex before accessing the driver
+        if (osMutexAcquire(at_driver_mutexHandle, osWaitForever) == osOK)
+        {
+            if(AtCommand_Ioctl(E_AT_IOCTL_SEND_CMD, &req) == E_AT_ERR_NONE) {
+                if(req.line_count > 0) {
+                	snprintf(latest_signal_strength, sizeof(latest_signal_strength), "%s", req.lines[0]);
+                }
+            }
+            // Release the mutex after done
+            osMutexRelease(at_driver_mutexHandle);
+        }
+
+        osDelay(5000);
+    }
+}
+
+// Task 2: Get Current Time from Modem (CCLK)
+void StartTimeTask(void *argument)
+{
+    char resp_buf[64];
+    AtCommandReq_t req = {
+        .command = "AT+CCLK?",
+        .expected_resp = "OK",
+        .timeout_ms = 1000,
+        .resp_buffer = resp_buf,
+        .resp_buffer_len = sizeof(resp_buf)
+    };
+
+    for(;;)
+    {
+        // Take the mutex before accessing the driver
+        if (osMutexAcquire(at_driver_mutexHandle, osWaitForever) == osOK)
+        {
+            if(AtCommand_Ioctl(E_AT_IOCTL_SEND_CMD, &req) == E_AT_ERR_NONE) {
+                 if(req.line_count > 0) {
+                	 snprintf(latest_network_time, sizeof(latest_network_time), "%s", req.lines[0]);
+                }
+            }
+            // Release the mutex after done
+            osMutexRelease(at_driver_mutexHandle);
+        }
+
+        osDelay(3000);
+    }
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -425,12 +550,14 @@ void StartDefaultTask(void *argument)
 {
   /* init code for USB_HOST */
   MX_USB_HOST_Init();
+
   /* USER CODE BEGIN 5 */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
+    for(;;)
+    {
+        HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
+        osDelay(500);
+    }
+
   /* USER CODE END 5 */
 }
 

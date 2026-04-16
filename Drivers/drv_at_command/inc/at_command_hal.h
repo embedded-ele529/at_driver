@@ -6,14 +6,14 @@ extern "C" {
 #endif
 
 #include <stdint.h>
-#include <board.h>
+#include "main.h"
+#include "board.h"
 
-// Sürücünün kullanacağı donanım makrolarını board.h'a bağlar
-#define AT_HW_USART         AT_MODEM_USART_INSTANCE
-#define AT_HW_BAUDRATE      AT_MODEM_BAUDRATE
+// Get the UART handle from main.c
+extern UART_HandleTypeDef huart3;
 
-// HAL kütüphanesindeki UART Handle'ı extern olarak alıyoruz (main.c'de tanımlı olan)
-extern UART_HandleTypeDef huart3; // Kendi UART handle'ın neyse onu yaz (örn: huart2, huart3)
+// Hardware macro definitions
+#define AT_HW_USART         huart3
 
 #ifdef __cplusplus
 }
