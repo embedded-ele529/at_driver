@@ -1,6 +1,6 @@
-#include "microphone.h"
-#include "microphone_hal.h"
-#include "pdm2pcm_glo.h"
+#include "../inc/microphone.h"
+#include "../inc/microphone_hal.h"
+#include "../../../Middlewares/ST/STM32_Audio/Addons/PDM/Inc/pdm2pcm_glo.h"
 #include <string.h>
 
 static uint8_t isMicOpen = 0;

@@ -115,6 +115,8 @@ void StartDefaultTask(void *argument);
 
 /* USER CODE BEGIN PFP */
 
+void StartSignalTask(void *argument);
+void StartTimeTask(void *argument);
 void StartMicTask(void *argument);
 
 /* USER CODE END PFP */
@@ -200,9 +202,10 @@ int main(void)
   /* USER CODE BEGIN RTOS_THREADS */
 
   // Create threads for signal quality and time retrieval
-  // signalTaskHandle = osThreadNew(StartSignalTask, NULL, &signalTask_attributes);
-  // timeTaskHandle = osThreadNew(StartTimeTask, NULL, &timeTask_attributes);
+  signalTaskHandle = osThreadNew(StartSignalTask, NULL, &signalTask_attributes);
+  timeTaskHandle = osThreadNew(StartTimeTask, NULL, &timeTask_attributes);
 
+  // Create thread for microphone data processing
   micTaskHandle = osThreadNew(StartMicTask, NULL, &micTask_attributes);
   /* USER CODE END RTOS_THREADS */
 
@@ -624,45 +627,30 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void StartMicTask(void *argument)
 {
-    // Kütüphanemiz her okumada 16 adet ses örneği dönecek (1 milisaniyelik ses)
     int16_t pcm_data[16];
-    uint32_t loop_counter = 0;
 
     for(;;)
     {
-        // Sürücüden yeni ses verisi okumayı dene
         if (Microphone_Read(pcm_data, 16) == E_MIC_ERR_NONE)
         {
             uint32_t total_amplitude = 0;
 
-            // 16 örneğin "ses şiddetini" hesapla
+            // Calculate average amplitude of the 16 PCM samples to estimate noise level
             for (int i = 0; i < 16; i++) {
-                // Ses dalgası + ve - yönlerde salındığı için mutlak değerini (abs) alıyoruz.
-                // Aksi takdirde + ve -'ler birbirini sıfırlar ve ses yok sanırız!
+                // Voice data is centered around 0, so we take absolute value to get amplitude
                 total_amplitude += abs(pcm_data[i]);
             }
 
             uint32_t avg_amplitude = total_amplitude / 16;
 
-            // 1. EŞİK KONTROLÜ (Gürültü var mı?)
-            // Bu 500 değeri ortamına göre değişir. (Odan sessizse düşür, gürültülüyse artır)
-            if (avg_amplitude > 500) {
+            // Threshold check
+            if (avg_amplitude > 7000) {
                 HAL_GPIO_WritePin(GPIOD, LD4_Pin, GPIO_PIN_SET);   // Yeşil LED'i Yak
             } else {
                 HAL_GPIO_WritePin(GPIOD, LD4_Pin, GPIO_PIN_RESET); // Söndür
             }
-
-            // 2. UART FLOOD KORUMASI VE BİLGİ EKRANI
-            // Saniyede 1000 kere print atarsak UART çöker.
-            // O yüzden her 500 döngüde bir (Yarım saniyede bir) odanın genel gürültüsünü ekrana basalım.
-            loop_counter++;
-            if (loop_counter >= 500) {
-                printf("Oda Gurultu Seviyesi: %lu\r\n", avg_amplitude);
-                loop_counter = 0;
-            }
         }
 
-        // İşlemciyi kilitlememek için 1 ms bekle (Zaten veri 1 ms'de bir hazır oluyor)
         osDelay(1);
     }
 }
@@ -727,11 +715,6 @@ void StartTimeTask(void *argument)
     }
 }
 
-int _write(int file, char *ptr, int len)
-{
-    HAL_UART_Transmit(&huart2, (uint8_t*)ptr, len, HAL_MAX_DELAY);
-    return len;
-}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -748,7 +731,7 @@ void StartDefaultTask(void *argument)
   /* USER CODE BEGIN 5 */
     for(;;)
     {
-        HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
+        //HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
         osDelay(500);
     }
 

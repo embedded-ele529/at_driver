@@ -1,0 +1,6 @@
+../Drivers/drv_microphone/src/microphone.c:23:17:Microphone_Open	16	static
+../Drivers/drv_microphone/src/microphone.c:55:17:Microphone_Ioctl	16	static
+../Drivers/drv_microphone/src/microphone.c:76:17:Microphone_Read	24	static
+../Drivers/drv_microphone/src/microphone.c:103:17:Microphone_Close	16	static
+../Drivers/drv_microphone/src/microphone.c:111:6:HAL_I2S_RxHalfCpltCallback	16	static
+../Drivers/drv_microphone/src/microphone.c:116:6:HAL_I2S_RxCpltCallback	16	static
