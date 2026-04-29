@@ -7,7 +7,7 @@ extern "C" {
 
 #include <stdint.h>
 #include "main.h"
-#include "board.h"
+#include "../../board.h"
 
 // Get the UART handle from main.c
 extern UART_HandleTypeDef huart3;

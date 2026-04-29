@@ -11,12 +11,14 @@ RM := rm -rf
 -include sources.mk
 -include USB_HOST/Target/subdir.mk
 -include USB_HOST/App/subdir.mk
+-include PDM2PCM/App/subdir.mk
 -include Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/subdir.mk
 -include Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/subdir.mk
 -include Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/subdir.mk
 -include Middlewares/Third_Party/FreeRTOS/Source/subdir.mk
 -include Middlewares/ST/STM32_USB_Host_Library/Core/Src/subdir.mk
 -include Middlewares/ST/STM32_USB_Host_Library/Class/CDC/Src/subdir.mk
+-include Drivers/drv_microphone/src/subdir.mk
 -include Drivers/drv_at_command/src/subdir.mk
 -include Drivers/STM32F4xx_HAL_Driver/Src/subdir.mk
 -include Core/Startup/subdir.mk
@@ -73,7 +75,7 @@ main-build: driver_development.elf secondary-outputs
 
 # Tool invocations
 driver_development.elf driver_development.map: $(OBJS) $(USER_OBJS) D:\STM32_Projects\driver_development\STM32F407VGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "driver_development.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"D:\STM32_Projects\driver_development\STM32F407VGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="driver_development.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+	arm-none-eabi-gcc -o "driver_development.elf" @"objects.list" $(USER_OBJS) -Wl,--start-group $(LIBS) -Wl,--end-group -mcpu=cortex-m4 -T"D:\STM32_Projects\driver_development\STM32F407VGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="driver_development.map" -Wl,--gc-sections -static -L../Middlewares/ST/STM32_Audio/Addons/PDM/Lib --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

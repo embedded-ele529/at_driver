@@ -18,13 +18,16 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include <stdio.h>
 #include "cmsis_os.h"
+#include "pdm2pcm.h"
 #include "usb_host.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
+#include <stdlib.h>
 #include "at_command.h"
+#include "microphone.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -43,12 +46,17 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+CRC_HandleTypeDef hcrc;
+
 I2C_HandleTypeDef hi2c1;
 
+I2S_HandleTypeDef hi2s2;
 I2S_HandleTypeDef hi2s3;
+DMA_HandleTypeDef hdma_spi2_rx;
 
 SPI_HandleTypeDef hspi1;
 
+UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
 
 /* Definitions for defaultTask */
@@ -82,20 +90,32 @@ const osThreadAttr_t timeTask_attributes = {
   .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityAboveNormal,
 };
+
+osThreadId_t micTaskHandle;
+const osThreadAttr_t micTask_attributes = {
+  .name = "MicTask",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityAboveNormal, // Ses kaçırmamak için yüksek öncelik
+};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+void PeriphCommonClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_I2S3_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART3_UART_Init(void);
+static void MX_I2S2_Init(void);
+static void MX_CRC_Init(void);
+static void MX_USART2_UART_Init(void);
 void StartDefaultTask(void *argument);
-void StartSignalTask(void *argument);
-void StartTimeTask(void *argument);
 
 /* USER CODE BEGIN PFP */
+
+void StartMicTask(void *argument);
 
 /* USER CODE END PFP */
 
@@ -127,19 +147,28 @@ int main(void)
   /* Configure the system clock */
   SystemClock_Config();
 
+  /* Configure the peripherals common clocks */
+  PeriphCommonClock_Config();
+
   /* USER CODE BEGIN SysInit */
 
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_I2C1_Init();
   MX_I2S3_Init();
   MX_SPI1_Init();
   MX_USART3_UART_Init();
+  MX_I2S2_Init();
+  MX_CRC_Init();
+  MX_PDM2PCM_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
   AtCommand_Open(NULL);
+  Microphone_Open(NULL);
 
   /* USER CODE END 2 */
 
@@ -171,8 +200,10 @@ int main(void)
   /* USER CODE BEGIN RTOS_THREADS */
 
   // Create threads for signal quality and time retrieval
-  signalTaskHandle = osThreadNew(StartSignalTask, NULL, &signalTask_attributes);
-  timeTaskHandle = osThreadNew(StartTimeTask, NULL, &timeTask_attributes);
+  // signalTaskHandle = osThreadNew(StartSignalTask, NULL, &signalTask_attributes);
+  // timeTaskHandle = osThreadNew(StartTimeTask, NULL, &timeTask_attributes);
+
+  micTaskHandle = osThreadNew(StartMicTask, NULL, &micTask_attributes);
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -241,6 +272,52 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief Peripherals Common Clock Configuration
+  * @retval None
+  */
+void PeriphCommonClock_Config(void)
+{
+  RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
+
+  /** Initializes the peripherals clock
+  */
+  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_I2S;
+  PeriphClkInitStruct.PLLI2S.PLLI2SN = 192;
+  PeriphClkInitStruct.PLLI2S.PLLI2SR = 2;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/**
+  * @brief CRC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_CRC_Init(void)
+{
+
+  /* USER CODE BEGIN CRC_Init 0 */
+
+  /* USER CODE END CRC_Init 0 */
+
+  /* USER CODE BEGIN CRC_Init 1 */
+
+  /* USER CODE END CRC_Init 1 */
+  hcrc.Instance = CRC;
+  if (HAL_CRC_Init(&hcrc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  __HAL_CRC_DR_RESET(&hcrc);
+  /* USER CODE BEGIN CRC_Init 2 */
+
+  /* USER CODE END CRC_Init 2 */
+
+}
+
+/**
   * @brief I2C1 Initialization Function
   * @param None
   * @retval None
@@ -271,6 +348,40 @@ static void MX_I2C1_Init(void)
   /* USER CODE BEGIN I2C1_Init 2 */
 
   /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
+  * @brief I2S2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2S2_Init(void)
+{
+
+  /* USER CODE BEGIN I2S2_Init 0 */
+
+  /* USER CODE END I2S2_Init 0 */
+
+  /* USER CODE BEGIN I2S2_Init 1 */
+
+  /* USER CODE END I2S2_Init 1 */
+  hi2s2.Instance = SPI2;
+  hi2s2.Init.Mode = I2S_MODE_MASTER_RX;
+  hi2s2.Init.Standard = I2S_STANDARD_PHILIPS;
+  hi2s2.Init.DataFormat = I2S_DATAFORMAT_16B;
+  hi2s2.Init.MCLKOutput = I2S_MCLKOUTPUT_DISABLE;
+  hi2s2.Init.AudioFreq = I2S_AUDIOFREQ_32K;
+  hi2s2.Init.CPOL = I2S_CPOL_LOW;
+  hi2s2.Init.ClockSource = I2S_CLOCK_PLL;
+  hi2s2.Init.FullDuplexMode = I2S_FULLDUPLEXMODE_DISABLE;
+  if (HAL_I2S_Init(&hi2s2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2S2_Init 2 */
+
+  /* USER CODE END I2S2_Init 2 */
 
 }
 
@@ -347,6 +458,39 @@ static void MX_SPI1_Init(void)
 }
 
 /**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
   * @brief USART3 Initialization Function
   * @param None
   * @retval None
@@ -376,6 +520,22 @@ static void MX_USART3_UART_Init(void)
   /* USER CODE BEGIN USART3_Init 2 */
 
   /* USER CODE END USART3_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Stream3_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream3_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream3_IRQn);
 
 }
 
@@ -423,14 +583,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(OTG_FS_PowerSwitchOn_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PDM_OUT_Pin */
-  GPIO_InitStruct.Pin = PDM_OUT_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF5_SPI2;
-  HAL_GPIO_Init(PDM_OUT_GPIO_Port, &GPIO_InitStruct);
-
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_EVT_RISING;
@@ -442,14 +594,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(BOOT1_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : CLK_IN_Pin */
-  GPIO_InitStruct.Pin = CLK_IN_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF5_SPI2;
-  HAL_GPIO_Init(CLK_IN_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : LD4_Pin LD3_Pin LD5_Pin LD6_Pin
                            Audio_RST_Pin */
@@ -478,6 +622,51 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void StartMicTask(void *argument)
+{
+    // Kütüphanemiz her okumada 16 adet ses örneği dönecek (1 milisaniyelik ses)
+    int16_t pcm_data[16];
+    uint32_t loop_counter = 0;
+
+    for(;;)
+    {
+        // Sürücüden yeni ses verisi okumayı dene
+        if (Microphone_Read(pcm_data, 16) == E_MIC_ERR_NONE)
+        {
+            uint32_t total_amplitude = 0;
+
+            // 16 örneğin "ses şiddetini" hesapla
+            for (int i = 0; i < 16; i++) {
+                // Ses dalgası + ve - yönlerde salındığı için mutlak değerini (abs) alıyoruz.
+                // Aksi takdirde + ve -'ler birbirini sıfırlar ve ses yok sanırız!
+                total_amplitude += abs(pcm_data[i]);
+            }
+
+            uint32_t avg_amplitude = total_amplitude / 16;
+
+            // 1. EŞİK KONTROLÜ (Gürültü var mı?)
+            // Bu 500 değeri ortamına göre değişir. (Odan sessizse düşür, gürültülüyse artır)
+            if (avg_amplitude > 500) {
+                HAL_GPIO_WritePin(GPIOD, LD4_Pin, GPIO_PIN_SET);   // Yeşil LED'i Yak
+            } else {
+                HAL_GPIO_WritePin(GPIOD, LD4_Pin, GPIO_PIN_RESET); // Söndür
+            }
+
+            // 2. UART FLOOD KORUMASI VE BİLGİ EKRANI
+            // Saniyede 1000 kere print atarsak UART çöker.
+            // O yüzden her 500 döngüde bir (Yarım saniyede bir) odanın genel gürültüsünü ekrana basalım.
+            loop_counter++;
+            if (loop_counter >= 500) {
+                printf("Oda Gurultu Seviyesi: %lu\r\n", avg_amplitude);
+                loop_counter = 0;
+            }
+        }
+
+        // İşlemciyi kilitlememek için 1 ms bekle (Zaten veri 1 ms'de bir hazır oluyor)
+        osDelay(1);
+    }
+}
+
 // Task 1: Measure Signal Quality (CSQ)
 void StartSignalTask(void *argument)
 {
@@ -537,6 +726,12 @@ void StartTimeTask(void *argument)
         osDelay(3000);
     }
 }
+
+int _write(int file, char *ptr, int len)
+{
+    HAL_UART_Transmit(&huart2, (uint8_t*)ptr, len, HAL_MAX_DELAY);
+    return len;
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -550,7 +745,6 @@ void StartDefaultTask(void *argument)
 {
   /* init code for USB_HOST */
   MX_USB_HOST_Init();
-
   /* USER CODE BEGIN 5 */
     for(;;)
     {
