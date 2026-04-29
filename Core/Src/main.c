@@ -644,7 +644,7 @@ void StartMicTask(void *argument)
             uint32_t avg_amplitude = total_amplitude / 16;
 
             // Threshold check
-            if (avg_amplitude > 7000) {
+            if (avg_amplitude > 1600) {
                 HAL_GPIO_WritePin(GPIOD, LD4_Pin, GPIO_PIN_SET);   // Yeşil LED'i Yak
             } else {
                 HAL_GPIO_WritePin(GPIOD, LD4_Pin, GPIO_PIN_RESET); // Söndür

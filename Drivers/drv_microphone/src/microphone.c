@@ -38,7 +38,7 @@ micErrorCodes_t Microphone_Open(void* vpParam)
 
     // PDM2PCM library configuration
     PDM_FilterConfig[0].output_samples_number = 16;  // 1 ms of audio at 16 kHz = 16 PCM samples
-    PDM_FilterConfig[0].mic_gain = 24;               // Gain for better voice recognition performance
+    PDM_FilterConfig[0].mic_gain = 12;               // Gain for better voice recognition performance
     PDM_FilterConfig[0].decimation_factor = PDM_FILTER_DEC_FACTOR_64; // 64 PDM bits to produce 16 PCM samples
     PDM_Filter_setConfig(&PDM_FilterHandler[0], &PDM_FilterConfig[0]);
 
