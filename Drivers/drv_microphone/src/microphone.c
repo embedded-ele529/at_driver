@@ -1,26 +1,25 @@
 #include "microphone.h"
 #include "microphone_hal.h"
-#include "pdm2pcm_glo.h"   // ST'nin PDM'den PCM'e dönüştürme kütüphanesi
+#include "pdm2pcm_glo.h"
 #include <string.h>
 
-/* --- İÇ DEĞİŞKENLER VE TAMPONLAR --- */
 static uint8_t isMicOpen = 0;
 
-// SES TANIMA İÇİN HESAPLAMALAR:
-// 1 milisaniyelik ses (16 kHz frekansta) = 16 adet PCM örneği demektir.
-// 16 adet PCM üretmek için kütüphane bizden 1024 bit (yani 64 adet 16-bit PDM verisi) ister.
-// Ping-Pong (Çift Tampon) mantığı için bunu 2 ile çarpıyoruz: Toplam 128
+// Voice Recognition Calculations:
+// 1ms audio @ 16kHz = 16 PCM samples.
+// Library requires 1024 bits (64 x 16-bit PDM) to produce 16 PCM samples.
+// Total 128 used for Ping-Pong (Double Buffering) implementation.
 #define PDM_BUFFER_SIZE 128
 static uint16_t pdm_rx_buffer[PDM_BUFFER_SIZE];
 
-// PDM2PCM Kütüphanesi Değişkenleri
+// PDM2PCM Library Variables
 static PDM_Filter_Handler_t PDM_FilterHandler[1];
 static PDM_Filter_Config_t PDM_FilterConfig[1];
 
 static volatile uint8_t data_half_ready = 0;
 static volatile uint8_t data_full_ready = 0;
 
-/* --- 1. SÜRÜCÜYÜ BAŞLATMA --- */
+// Start the driver
 micErrorCodes_t Microphone_Open(void* vpParam)
 {
     if (isMicOpen) return E_MIC_ERR_NONE;
@@ -29,22 +28,21 @@ micErrorCodes_t Microphone_Open(void* vpParam)
     data_half_ready = 0;
     data_full_ready = 0;
 
-    // --- PDM FİLTRE KURULUMU (SİHİRLİ KISIM) ---
-    // 1. İşleyici Ayarları
+    // PDM2PCM library initialization
     PDM_FilterHandler[0].bit_order = PDM_FILTER_BIT_ORDER_LSB;
     PDM_FilterHandler[0].endianness = PDM_FILTER_ENDIANNESS_LE;
-    PDM_FilterHandler[0].high_pass_tap = 2122358088; // Sesteki patlamaları/uğultuları kesen DC filtresi
-    PDM_FilterHandler[0].out_ptr_channels = 1;       // Mono ses
-    PDM_FilterHandler[0].in_ptr_channels = 1;        // Tek mikrofon
+    PDM_FilterHandler[0].high_pass_tap = 2122358088; // DC filter
+    PDM_FilterHandler[0].out_ptr_channels = 1;       // Mono voice
+    PDM_FilterHandler[0].in_ptr_channels = 1;        // Single PDM mic
     PDM_Filter_Init(&PDM_FilterHandler[0]);
 
-    // 2. Dönüşüm Konfigürasyonu
-    PDM_FilterConfig[0].output_samples_number = 16;  // Her okumada 1 ms'lik (16 sample) ses çıkar
-    PDM_FilterConfig[0].mic_gain = 24;               // Mikrofonun kazancı/ses seviyesi (Gerekirse artırılır)
-    PDM_FilterConfig[0].decimation_factor = PDM_FILTER_DEC_FACTOR_64; // 16 kHz için 64x seyreltme
+    // PDM2PCM library configuration
+    PDM_FilterConfig[0].output_samples_number = 16;  // 1 ms of audio at 16 kHz = 16 PCM samples
+    PDM_FilterConfig[0].mic_gain = 24;               // Gain for better voice recognition performance
+    PDM_FilterConfig[0].decimation_factor = PDM_FILTER_DEC_FACTOR_64; // 64 PDM bits to produce 16 PCM samples
     PDM_Filter_setConfig(&PDM_FilterHandler[0], &PDM_FilterConfig[0]);
 
-    // I2S'i başlat ve mikrofondan DMA ile PDM akışını başlat
+    // Start I2S DMA reception for PDM data
     if (HAL_I2S_Receive_DMA(&MIC_HW_I2S, pdm_rx_buffer, PDM_BUFFER_SIZE) != HAL_OK) {
         return E_MIC_ERR_HW_ERROR;
     }
@@ -53,7 +51,7 @@ micErrorCodes_t Microphone_Open(void* vpParam)
     return E_MIC_ERR_NONE;
 }
 
-/* --- 2. AYARLAR (IOCTL) --- */
+// Ioctl commands
 micErrorCodes_t Microphone_Ioctl(MIC_IOCTL_COMMANDS_T eCommand, void* vpParam)
 {
     if (!isMicOpen) return E_MIC_ERR_HW_ERROR;
@@ -74,7 +72,7 @@ micErrorCodes_t Microphone_Ioctl(MIC_IOCTL_COMMANDS_T eCommand, void* vpParam)
     return E_MIC_ERR_NONE;
 }
 
-/* --- 3. VERİ OKUMA (READ) --- */
+// Data read
 micErrorCodes_t Microphone_Read(int16_t* pBuffer, uint16_t size)
 {
     if (!isMicOpen) return E_MIC_ERR_HW_ERROR;
@@ -82,7 +80,7 @@ micErrorCodes_t Microphone_Read(int16_t* pBuffer, uint16_t size)
 
     uint8_t *pdm_ptr = NULL;
 
-    // Hangi yarı dolduysa onun başlangıç adresini al
+    // Check if new PDM data is ready (half or full buffer) and set pointer accordingly
     if (data_half_ready) {
         pdm_ptr = (uint8_t*)&pdm_rx_buffer[0];
         data_half_ready = 0;
@@ -92,18 +90,16 @@ micErrorCodes_t Microphone_Read(int16_t* pBuffer, uint16_t size)
         data_full_ready = 0;
     }
 
-    // Eğer yeni bir veri geldiyse, filtreye sok
+    // If we have new PDM data, convert it to PCM and return
     if (pdm_ptr != NULL) {
-        // PDM verisini al, pBuffer içine gerçek PCM sesi olarak (16 adet) yaz!
         PDM_Filter(pdm_ptr, (uint16_t*)pBuffer, &PDM_FilterHandler[0]);
         return E_MIC_ERR_NONE;
     }
 
-    // Yeni veri yoksa beklemesini söyle
     return E_MIC_ERR_UNKNOWN;
 }
 
-/* --- 4. SÜRÜCÜYÜ KAPATMA --- */
+// Close the driver and stop the I2S DMA
 micErrorCodes_t Microphone_Close(void* vpParam)
 {
     HAL_I2S_DMAStop(&MIC_HW_I2S);
@@ -111,7 +107,7 @@ micErrorCodes_t Microphone_Close(void* vpParam)
     return E_MIC_ERR_NONE;
 }
 
-/* --- 5. DMA KESMELERİ --- */
+// DMA Interrupts
 void HAL_I2S_RxHalfCpltCallback(I2S_HandleTypeDef *hi2s)
 {
     if (hi2s->Instance == MIC_HW_I2S.Instance) data_half_ready = 1;
