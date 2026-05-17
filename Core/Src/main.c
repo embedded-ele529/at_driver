@@ -29,6 +29,8 @@
 #include "microphone.h"
 #include "at_command.h"
 #include "cellular.h"
+#include "ai_platform.h"
+#include "ai_datatypes_defines.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -43,6 +45,14 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
+
+/* Define Model's output classes. */
+#define NO_CLASS                  0U
+#define NOISE_CLASS               1U
+#define YES_CLASS                 2U
+
+/* Define Model's output threshold. */
+#define DECISION_THRESHOLD        0.7
 
 /* USER CODE END PM */
 
